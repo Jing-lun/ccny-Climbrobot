@@ -247,6 +247,8 @@ void InitEPwm7Gpio(void)
     GpioCtrlRegs.GPAPUD.bit.GPIO13 = 1;    // Disable pull-up on GPIO13 (EPWM7B)
     GpioCtrlRegs.GPAPUD.bit.GPIO12=0;   //pullup enable
     GpioCtrlRegs.GPADIR.bit.GPIO12=1;  //output
+//    GpioCtrlRegs.GPAPUD.bit.GPIO13=0;   //pullup enable
+//    GpioCtrlRegs.GPADIR.bit.GPIO13=1;  //output
     // GpioCtrlRegs.GPEPUD.bit.GPIO157 = 1;    // Disable pull-up on GPIO157 (EPWM7A)
     // GpioCtrlRegs.GPEPUD.bit.GPIO158 = 1;    // Disable pull-up on GPIO158 (EPWM7B)
 
@@ -257,7 +259,7 @@ void InitEPwm7Gpio(void)
     // Comment out other unwanted lines.
     //
 //    GpioCtrlRegs.GPAMUX1.bit.GPIO12 = 1;   // Configure GPIO12 as EPWM7A
-//    GpioCtrlRegs.GPAMUX1.bit.GPIO13 = 1;   // Configure GPIO13 as EPWM7B
+    GpioCtrlRegs.GPAMUX1.bit.GPIO13 = 1;   // Configure GPIO13 as EPWM7B
     // GpioCtrlRegs.GPEMUX2.bit.GPIO157 = 1;   // Configure GPIO157 as EPWM7A
     // GpioCtrlRegs.GPEMUX2.bit.GPIO158 = 1;   // Configure GPIO158 as EPWM7B
 
@@ -389,8 +391,8 @@ void InitEPwm11Gpio(void)
     // This will enable the pullups for the specified pins.
     // Comment out other unwanted lines.
     //
-    GpioCtrlRegs.GPFPUD.bit.GPIO165 = 1;    // Disable pull-up on GPIO165 (EPWM11A)
-    GpioCtrlRegs.GPFPUD.bit.GPIO166 = 1;    // Disable pull-up on GPIO166 (EPWM11B)
+//    GpioCtrlRegs.GPFPUD.bit.GPIO165 = 1;    // Disable pull-up on GPIO165 (EPWM11A)
+//    GpioCtrlRegs.GPFPUD.bit.GPIO166 = 1;    // Disable pull-up on GPIO166 (EPWM11B)
 
     //
     // Configure EPWM-6 pins using GPIO regs
@@ -398,8 +400,18 @@ void InitEPwm11Gpio(void)
     // pins.
     // Comment out other unwanted lines.
     //
-    GpioCtrlRegs.GPFMUX1.bit.GPIO165 = 1;   // Configure GPIO165 as EPWM11A
-    GpioCtrlRegs.GPFMUX1.bit.GPIO166 = 1;   // Configure GPIO166 as EPWM11B
+//    GpioCtrlRegs.GPFMUX1.bit.GPIO165 = 1;   // Configure GPIO165 as EPWM11A
+//    GpioCtrlRegs.GPFMUX1.bit.GPIO166 = 1;   // Configure GPIO166 as EPWM11B
+//        GpioCtrlRegs.GPAGMUX2.bit.GPIO20 = 1;                /* EPWM9A pin*/
+//        GpioCtrlRegs.GPAMUX2.bit.GPIO20 = 1;
+        GpioCtrlRegs.GPAGMUX2.bit.GPIO21 = 1;                /* EPWM9B pin*/
+        GpioCtrlRegs.GPAMUX2.bit.GPIO21 = 1;
+//
+        GpioCtrlRegs.GPAPUD.bit.GPIO21=0;   //pullup enable
+        GpioCtrlRegs.GPADIR.bit.GPIO21=1;  //output
+//        GpioCtrlRegs.GPAPUD.bit.GPIO20=0;   //pullup enable
+//        GpioCtrlRegs.GPADIR.bit.GPIO20=1;  //output
+
 
     EDIS;
 }

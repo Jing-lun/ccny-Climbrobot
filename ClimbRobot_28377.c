@@ -2,7 +2,8 @@
  * ClimbRobot_28377.c
  *
  *  Created on: 07/21/2017
- *  Modified on : 10/19/2018
+ *  1st Modified on : 10/19/2018
+ *  2nd Modified on : 05/23/2019
  *      Author: Liu Zhaoming
  *            : Feng Jinglun
  */
@@ -23,15 +24,6 @@ Uint16 AdcaResults[RESULTS_BUFFER_SIZE];
 Uint16 resultsIndex;
 volatile Uint16 bufferFull;
 
-float varVolt =  .543221;  // variance determined using excel and reading samples of raw sensor data
-float varProcess = .5e-6;
-float Pc = 0.0;
-float G = 0.0;
-float P = 1.0;
-float Xp = 0.0;
-float Zp = 0.0;
-float Xe = 0.0;
-
 typedef struct
 {
     volatile struct EPWM_REGS *EPwmRegHandle;
@@ -40,8 +32,9 @@ typedef struct
     Uint16 EPwmCMPA; //for giving the speed
     Uint16 EPwmCMPB; //for giving the speed
     float EPwmSpeed; //for giving the speed
+    float EPwmTurnSpeed;
 }EPWM_INFO;
-EPWM_INFO epwm7_info,epwm8_info,epwm9_info,epwm10_info;
+EPWM_INFO epwm7_info,epwm8_info,epwm9_info,epwm10_info, epwm11_info;
 float EPWM_Duty_Cycle = 1;
 
 uint16_t EPwm1TimerIntCount = 0;
@@ -70,6 +63,7 @@ __interrupt void epwm7_isr(void);
 void InitEPwm8Example(void);
 void InitEPwm9Example(void);
 void InitEPwm10Example(void);
+void InitEPwm11Example(void);
 
 float filteredData(float voltage);
 
@@ -88,17 +82,17 @@ void main(void)
 
    InitSysCtrl();
 
-   DELAY_US(1000000); //等待微妙  wait some microseconds
+   DELAY_US(1000000); // wait some microseconds
 
    InitGpio();
 
    CpuSysRegs.PCLKCR2.bit.EPWM7 = 1;
    CpuSysRegs.PCLKCR2.bit.EPWM8 = 1;
    CpuSysRegs.PCLKCR2.bit.EPWM9 = 1;
-   CpuSysRegs.PCLKCR2.bit.EPWM9 = 1;
 
-   InitEPwm10Gpio(); // for motion motor1
-   InitEPwm9Gpio(); // for motion motor2
+   InitEPwm11Gpio(); // for motion left motor
+   InitEPwm10Gpio(); // for motion left motor
+   InitEPwm9Gpio(); // for motion right motor
    InitEPwm8Gpio(); // for suction motor and servo motor
    InitEPwm7Gpio();
 
@@ -130,6 +124,7 @@ void main(void)
    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 0; // ePWM Time Base Clock sync: When set PWM time bases of all the PWM modules start counting
    EDIS;
 
+   InitEPwm11Example(); // for motion motor1
    InitEPwm10Example(); // for motion motor1
    InitEPwm9Example(); // for motion motor2
    InitEPwm8Example(); // for suction motor and sevor
@@ -288,6 +283,44 @@ void scib_fifo_init()
     ScibRegs.SCIFFCT.all = 0x0;
 }
 
+void InitEPwm11Example()
+{
+   EPwm11Regs.TBCTL.bit.CTRMODE = TB_COUNT_UP; // Count up
+   EPwm11Regs.TBPRD = EPWM3_TIMER_TBPRD;       // Set timer period
+   EPwm11Regs.TBCTL.bit.PHSEN = TB_DISABLE;    // Disable phase loading
+   EPwm11Regs.TBPHS.bit.TBPHS = 0x0000;        // Phase is 0
+   EPwm11Regs.TBCTR = 0x0000;                  // Clear counter
+   EPwm11Regs.TBCTL.bit.HSPCLKDIV = 4;//TB_DIV2;   // Clock ratio to SYSCLKOUT
+   EPwm11Regs.TBCTL.bit.CLKDIV = TB_DIV2;
+
+   EPwm11Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
+   EPwm11Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
+   EPwm11Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
+   EPwm11Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
+
+   EPwm11Regs.CMPA.bit.CMPA = EPWM3_TIMER_TBPRD * EPWM_Duty_Cycle;      // Set compare A value
+   EPwm11Regs.CMPB.bit.CMPB = EPWM3_TIMER_TBPRD * EPWM_Duty_Cycle;      // Set Compare B value
+
+   EPwm11Regs.AQCTLA.bit.PRD = AQ_CLEAR;            // Clear PWM2A on Period
+   EPwm11Regs.AQCTLA.bit.CAU = AQ_SET;              // Set PWM2A on event A,
+                                                   // up count
+
+   EPwm11Regs.AQCTLB.bit.PRD = AQ_CLEAR;            // Clear PWM2B on Period
+   EPwm11Regs.AQCTLB.bit.CBU = AQ_SET;              // Set PWM2B on event B,
+                                                   // up countevent
+   EPwm11Regs.ETSEL.bit.INTSEL = ET_CTR_ZERO;
+   EPwm11Regs.ETSEL.bit.INTEN = 1;                  // Enable INT
+   EPwm11Regs.ETPS.bit.INTPRD = ET_3RD;             // Generate INT on 3rd event
+
+   epwm11_info.EPwm_CMPA_Direction = EPWM_CMP_UP;   // Start by increasing CMPA
+   epwm11_info.EPwm_CMPB_Direction = EPWM_CMP_DOWN; // and decreasing CMPB
+                                                   // counter
+   epwm11_info.EPwmRegHandle = &EPwm11Regs;          // Set the pointer to the
+                                                   // ePWM module
+   epwm11_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
+   epwm11_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
+}
+
 void InitEPwm10Example()
 {
    EPwm10Regs.TBCTL.bit.CTRMODE = TB_COUNT_UP; // Count up
@@ -325,6 +358,7 @@ void InitEPwm10Example()
    epwm10_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
    epwm10_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
    epwm10_info.EPwmSpeed = 0.5;
+   epwm10_info.EPwmTurnSpeed = 0.9;
 }
 
 void InitEPwm9Example()
@@ -365,6 +399,7 @@ void InitEPwm9Example()
        epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
        epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
        epwm9_info.EPwmSpeed = 0.5;
+       epwm9_info.EPwmTurnSpeed = 0.9;
 }
 
 void InitEPwm8Example()
@@ -460,6 +495,16 @@ void update_compare(EPWM_INFO *epwm_info)
    return;
 }
 
+void update_compare_CMPB(EPWM_INFO *epwm_info)
+{
+
+    if(epwm_info->EPwmCMPB != epwm_info->EPwmRegHandle->CMPB.bit.CMPB)
+    {
+        epwm_info->EPwmRegHandle->CMPB.bit.CMPB = epwm_info->EPwmCMPB;
+    }
+   return;
+}
+
 void state_machine_processing()
 {
     switch(state)
@@ -472,8 +517,6 @@ void state_machine_processing()
             epwm10_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
             epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
             epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
             update_compare(&epwm9_info);
             update_compare(&epwm10_info);
             break;
@@ -482,8 +525,6 @@ void state_machine_processing()
             epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD * (1 - epwm9_info.EPwmSpeed);
             epwm10_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
             epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
             update_compare(&epwm9_info);
             update_compare(&epwm10_info);
             break;
@@ -492,28 +533,22 @@ void state_machine_processing()
             epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD * (1 - epwm9_info.EPwmSpeed);
             epwm10_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
             epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPB = EPWM3_TIMER_TBPRD * 0;
-//            epwm7_info.EPwmCMPA = EPWM3_TIMER_TBPRD * 0;
             update_compare(&epwm9_info);
             update_compare(&epwm10_info);
             break;
         case 0x04://turn left
-            epwm10_info.EPwmCMPA = EPWM3_TIMER_TBPRD * (1 - epwm10_info.EPwmSpeed);
-            epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD * (1 - epwm9_info.EPwmSpeed);
+            epwm10_info.EPwmCMPA = EPWM3_TIMER_TBPRD * (1 - 0.25 * epwm10_info.EPwmSpeed); // left wheel big param high speed
+            epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD * (1 - 0.25 * epwm9_info.EPwmSpeed);
             epwm10_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
             epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPB = EPWM3_TIMER_TBPRD * (1 - epwm7_info.EPwmSpeed);
-//            epwm7_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
             update_compare(&epwm9_info);
             update_compare(&epwm10_info);
             break;
         case 0x08://turn right
-            epwm10_info.EPwmCMPB = EPWM3_TIMER_TBPRD * (1 - epwm10_info.EPwmSpeed);
-            epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD * (1 - epwm9_info.EPwmSpeed);
+            epwm10_info.EPwmCMPB = EPWM3_TIMER_TBPRD * (1 - 0.25 * epwm10_info.EPwmSpeed);
+            epwm9_info.EPwmCMPA = EPWM3_TIMER_TBPRD * (1 - 0.25 * epwm9_info.EPwmSpeed);
             epwm10_info.EPwmCMPA = EPWM3_TIMER_TBPRD;
             epwm9_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
-//            epwm7_info.EPwmCMPA = EPWM3_TIMER_TBPRD * (1 - epwm7_info.EPwmSpeed);
-//            epwm7_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
             update_compare(&epwm9_info);
             update_compare(&epwm10_info);
             break;
@@ -537,22 +572,79 @@ void state_machine_processing()
         }
         break;
     case 4://servo
-        switch(operator % 3)
+        switch(operator % 20)
         {
         case 0:
+        case 10:
             epwm8_info.EPwmCMPB = EPWM8_MID_CMP;
             update_compare(&epwm8_info);
             state = 0;
             operator = 0;
             break;
         case 1:
-            epwm8_info.EPwmCMPB = EPWM8_LOW_CMP;
+        case 9:
+            epwm8_info.EPwmCMPB = 62500*0.922;
             update_compare(&epwm8_info);
             state = 0;
             operator = 0;
             break;
         case 2:
+        case 8:
+            epwm8_info.EPwmCMPB = 62500*0.919;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 3:
+        case 7:
+            epwm8_info.EPwmCMPB = 62500*0.916;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 4:
+        case 6:
+            epwm8_info.EPwmCMPB = 62500*0.913;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 5:
             epwm8_info.EPwmCMPB = EPWM8_HIG_CMP;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 11:
+        case 19:
+            epwm8_info.EPwmCMPB = 62500*0.928;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 12:
+        case 18:
+            epwm8_info.EPwmCMPB = 62500*0.931;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 13:
+        case 17:
+            epwm8_info.EPwmCMPB = 62500*0.934;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 14:
+        case 16:
+            epwm8_info.EPwmCMPB = 62500*0.937;
+            update_compare(&epwm8_info);
+            state = 0;
+            operator = 0;
+            break;
+        case 15:
+            epwm8_info.EPwmCMPB = EPWM8_LOW_CMP;
             update_compare(&epwm8_info);
             state = 0;
             operator = 0;
@@ -567,8 +659,6 @@ void state_machine_processing()
             epwm10_info.EPwmSpeed = epwm10_info.EPwmSpeed/100;
             epwm9_info.EPwmSpeed = msg_rec[3];
             epwm9_info.EPwmSpeed = epwm9_info.EPwmSpeed/100;
-//            epwm7_info.EPwmSpeed = msg_rec[3];
-//            epwm7_info.EPwmSpeed = epwm7_info.EPwmSpeed/100;
             state = 0;
             operator = 0;
             break;
@@ -580,25 +670,51 @@ void state_machine_processing()
             break;
         }
         break;
-    case 6://LED
+    case 6://Solenoid
         switch(operator)
         {
             case 1:
                 EALLOW;
-                GpioCtrlRegs.GPADIR.bit.GPIO12 = 1;         // Drives LED LD2 on controlCARD
-                GpioCtrlRegs.GPAPUD.bit.GPIO12=0;   //pullup enable
+                GpioCtrlRegs.GPADIR.bit.GPIO12 = 1;         // Drives Solenoid on controlCARD
+                GpioCtrlRegs.GPAPUD.bit.GPIO12 = 0;   //pullup enable
                 EDIS;
-                GpioDataRegs.GPADAT.bit.GPIO12 = 0;     // Turn on LED
+                GpioDataRegs.GPADAT.bit.GPIO12 = 0;
                 DELAY_US(1000 * 500);                   // ON delay
-                GpioDataRegs.GPADAT.bit.GPIO12 = 1;     // Turn off LED
+                GpioDataRegs.GPADAT.bit.GPIO12 = 1;
                 DELAY_US(1000 * 500);
                 break;
             case 2:
                 EALLOW;
-                GpioCtrlRegs.GPAPUD.bit.GPIO12=1;   //pullup enable
-                GpioCtrlRegs.GPADIR.bit.GPIO12 = 0;         // Drives LED LD2 on controlCARD
+                GpioCtrlRegs.GPAPUD.bit.GPIO12 = 1;   //pullup enable
+                GpioCtrlRegs.GPADIR.bit.GPIO12 = 0;         // Drives Solenoid on controlCARD
                 EDIS;
                 GpioDataRegs.GPADAT.bit.GPIO12 = 1;         // Turn off LED
+                break;
+        }
+        break;
+    case 7://Frame LED
+        switch(operator)
+        {
+            case 1:
+                epwm7_info.EPwmCMPB = 0 * EPWM3_TIMER_TBPRD;
+                update_compare_CMPB(&epwm7_info);
+                break;
+            case 0:
+                epwm7_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
+                update_compare_CMPB(&epwm7_info);
+                break;
+        }
+        break;
+    case 8://Camera LED
+        switch(operator)
+        {
+            case 1:
+                epwm11_info.EPwmCMPB = 0 * EPWM3_TIMER_TBPRD;
+                update_compare_CMPB(&epwm11_info);
+                break;
+            case 0:
+                epwm11_info.EPwmCMPB = EPWM3_TIMER_TBPRD;
+                update_compare_CMPB(&epwm11_info);
                 break;
         }
         break;
